@@ -55,7 +55,7 @@ static struct ssd1306_data *lcd;
 
 
 
-static ssize_t sys_lcd_clear(struct class *class,
+static ssize_t clear_show(struct class *class,
 	struct class_attribute *attr, char *buf)
 {
 	//int ret;
@@ -69,7 +69,7 @@ static ssize_t sys_lcd_clear(struct class *class,
 }
 
 
-static ssize_t sys_lcd_paint(struct class *class,
+static ssize_t paint_show(struct class *class,
 	struct class_attribute *attr, char *buf)
 {
 	ssize_t i = 0;
@@ -84,8 +84,8 @@ static ssize_t sys_lcd_paint(struct class *class,
 
 
 
-CLASS_ATTR(clear, 0664, &sys_lcd_clear, NULL);
-CLASS_ATTR(paint, 0664, &sys_lcd_paint, NULL);
+CLASS_ATTR_RO(clear);
+CLASS_ATTR_RO(paint);
 
 
 static void make_sysfs_entry(struct i2c_client *drv_client)
@@ -211,5 +211,3 @@ module_i2c_driver(ssd1306_driver);
 MODULE_AUTHOR("Devyatov Andrey <andrii.deviatov@globallogic.com>");
 MODULE_DESCRIPTION("ssd1306 I2C");
 MODULE_LICENSE("GPL");
-
-//MODULE_INFO(vermagic, "4.14.14-sunxi SMP mod_unload ARMv7 thumb2 p2v8 ");
