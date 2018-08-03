@@ -54,6 +54,90 @@ struct ssd1306_data {
 static struct ssd1306_data *lcd;
 
 
+/* SSD1306 data buffer */
+static u8 ssd1306_Buffer[SSD1306_WIDTH * SSD1306_HEIGHT / 8];
+
+/* Init sequence taken from the Adafruit SSD1306 Arduino library */
+static void ssd1306_init_lcd(struct i2c_client *drv_client) {
+
+    char m;
+    char i;
+
+    dev_info(dev, "ssd1306: Device init \n");
+    	/* Init LCD */    
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xC8); //Set COM Output Scan Direction
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //---set low column address
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //---set high column address
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x40); //--set start line address
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x81); //--set contrast control register
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x0A);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA1); //--set segment re-map 0 to 127
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA6); //--set normal display
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA8); //--set multiplex ratio(1 to 64)
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x3F); //
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA4); //0xa4,Output follows RAM content;0xa5,Output ignores RAM content
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD3); //-set display offset
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //-not offset
+
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD5); //--set display clock divide ratio/oscillator frequency
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xa0); //--set divide ratio
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD9); //--set pre-charge period
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x22); //
+
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xDA); //--set com pins hardware configuration
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x12);
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xDB); //--set vcomh
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //0x20,0.77xVcc
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x8D); //--set DC-DC enable
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0x14); //
+    i2c_smbus_write_byte_data(drv_client, 0x00, 0xAF); //--turn on SSD1306 panel
+    
+    for (m = 0; m < 8; m++) {
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
+        // Write multi data 
+        /*
+        for (i = 0; i < SSD1306_WIDTH; i++) {
+            i2c_smbus_write_byte_data(drv_client, 0x40, 0xaa);
+        }
+        */
+    }   
+}
+
+int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
+
+    struct i2c_client *drv_client;
+    char m;
+    char i;
+
+    drv_client = drv_data->client;
+
+    for (m = 0; m < 8; m++) {
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
+        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
+        /* Write multi data */
+        for (i = 0; i < SSD1306_WIDTH; i++) {
+            i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[SSD1306_WIDTH*m +i]);
+        }   
+    }
+
+    return 0;
+}
+
+
+
+void ssd1306_clear(u8 color){
+
+	memset(ssd1306_Buffer, color, sizeof(ssd1306_Buffer));
+
+	//ssd1306_UpdateScreen(lcd);
+}
 
 static ssize_t clear_show(struct class *class,
 	struct class_attribute *attr, char *buf)
@@ -62,8 +146,10 @@ static ssize_t clear_show(struct class *class,
 	ssize_t i = 0;
 
 	i += sprintf(buf, "sys_lcd_clear\n");
+	dev_info(dev, "%s\n", __FUNCTION__);
 	
-	dev_info(dev, "sys_lcd_clear\n");
+	ssd1306_clear(0);
+    ssd1306_UpdateScreen(lcd);
 
 	return i;
 }
@@ -76,8 +162,11 @@ static ssize_t paint_show(struct class *class,
 	//_Point center = {64, 32};
 
 	i += sprintf(buf, "sys_lcd_paint\n");
+	dev_info(dev, "%s\n", __FUNCTION__);
 
-	dev_info(dev, "sys_lcd_paint\n");
+	ssd1306_clear(0xAA);
+
+	ssd1306_UpdateScreen(lcd);
 
 	return i;
 }
@@ -160,6 +249,10 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 
 
 	make_sysfs_entry(drv_client);
+
+
+    ssd1306_init_lcd(drv_client);
+    //ssd1306_UpdateScreen(lcd);
 
     dev_info(dev, "ssd1306 driver successfully loaded\n");
 
