@@ -57,6 +57,22 @@ static struct ssd1306_data *lcd;
 /* SSD1306 data buffer */
 static u8 ssd1306_Buffer[SSD1306_WIDTH * SSD1306_HEIGHT / 8];
 
+
+/**
+* @brief SSD1306 color enumeration
+*/
+typedef enum {
+        SSD1306_COLOR_BLACK = 0x00,   /*!< Black color, no pixel */
+        SSD1306_COLOR_WHITE = 0x01    /*!< Pixel is set. Color depends on LCD */
+} ssd1306_COLOR_t;
+
+
+typedef struct{
+	u16 	X;
+	u16 	Y;
+}_Point;
+
+
 /* Init sequence taken from the Adafruit SSD1306 Arduino library */
 static void ssd1306_init_lcd(struct i2c_client *drv_client) {
 
@@ -131,6 +147,93 @@ int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
 }
 
 
+int ssd1306_DrawPixel(struct ssd1306_data *drv_data, u16 x, u16 y, ssd1306_COLOR_t color) {
+
+    if ( x >= SSD1306_WIDTH || y >= SSD1306_HEIGHT ) {
+        return -1;
+    }
+
+    /* Set color */
+    if (color == SSD1306_COLOR_WHITE) {
+        ssd1306_Buffer[x + (y / 8) * SSD1306_WIDTH] |= 1 << (y % 8);
+    }
+    else {
+        ssd1306_Buffer[x + (y / 8) * SSD1306_WIDTH] &= ~(1 << (y % 8));
+    }
+
+    return 0;
+}
+
+
+void Graphic_setPoint(const u16 X, const u16 Y)
+{
+	ssd1306_DrawPixel(lcd, X, Y, SSD1306_COLOR_WHITE);
+}
+
+
+void Graphic_drawLine(_Point p1, _Point p2){
+	int dx, dy, inx, iny, e;
+	u16 x1 = p1.X, x2 = p2.X;
+	u16 y1 = p1.Y, y2 = p2.Y;
+
+    //u16 Color = Graphic_GetForeground();
+
+    dx = x2 - x1;
+    dy = y2 - y1;
+    inx = dx > 0 ? 1 : -1;
+    iny = dy > 0 ? 1 : -1;
+
+//	dx = (u16)abs(dx);
+//    dy = (u16)abs(dy);
+    dx = (dx > 0) ? dx : -dx;
+    dy = (dy > 0) ? dy : -dy;
+
+
+    if(dx >= dy) {
+        dy <<= 1;
+        e = dy - dx;
+        dx <<= 1;
+        while (x1 != x2){
+        	Graphic_setPoint(x1, y1);//, Color);
+			if(e >= 0){
+				y1 += iny;
+				e-= dx;
+			}
+			e += dy;
+			x1 += inx;
+		}
+	}
+    else{
+		dx <<= 1;
+		e = dx - dy;
+		dy <<= 1;
+		while (y1 != y2){
+			Graphic_setPoint(x1, y1);//, Color);
+			if(e >= 0){
+				x1 += inx;
+				e -= dy;
+			}
+			e += dx;
+			y1 += iny;
+		}
+	}
+    Graphic_setPoint(x1, y1);//, Color);
+}
+// ---------------------------------------------------------------------------
+
+
+void Graphic_drawLine_(u16 x1, u16 y1, u16 x2, u16 y2){
+	_Point p1 = {0}, p2 = {0};
+	p1.X = x1;
+	p1.Y = y1;
+	p2.X = x2;
+	p2.Y = y2;
+
+	Graphic_drawLine(p1, p2);
+}
+// ---------------------------------------------------------------------------
+
+
 
 void ssd1306_clear(u8 color){
 
@@ -164,7 +267,13 @@ static ssize_t paint_show(struct class *class,
 	i += sprintf(buf, "sys_lcd_paint\n");
 	dev_info(dev, "%s\n", __FUNCTION__);
 
-	ssd1306_clear(0xAA);
+	ssd1306_clear(0);
+
+	Graphic_drawLine_(0, 32, 127, 32);
+	Graphic_drawLine_(64, 0, 64, 64);
+
+	Graphic_drawLine_(0, 0, 127, 64);
+	Graphic_drawLine_(0, 64, 127, 0);
 
 	ssd1306_UpdateScreen(lcd);
 
