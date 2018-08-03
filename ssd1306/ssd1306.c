@@ -85,6 +85,7 @@ static struct device *dev;
 struct ssd1306_data {
     struct i2c_client *client;
 	struct fb_info *info;
+	struct work_struct display_update_ws;
 	u32 height;
 	u32 width;
 
@@ -128,9 +129,6 @@ int ssd1306_OFF(struct ssd1306_data *drv_data);
 
 /* Init sequence taken from the Adafruit SSD1306 Arduino library */
 static void ssd1306_init_lcd(struct i2c_client *drv_client) {
-
-    char m;
-    int i;
 
     dev_info(dev, "ssd1306: Device init \n");
     /* Init LCD */    
@@ -184,8 +182,6 @@ static void ssd1306_init_lcd(struct i2c_client *drv_client) {
 int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
 
     struct i2c_client *drv_client;
-    char m;
-    char i;
 	int ret;
 
     drv_client = drv_data->client;
@@ -254,6 +250,14 @@ static void ssd1307fb_update_display(struct ssd1306_data *lcd)
 }
 
 
+static void update_display_work(struct work_struct *work)
+{
+	struct ssd1306_data *lcd =
+		container_of(work, struct ssd1306_data, display_update_ws);
+	ssd1307fb_update_display(lcd);
+	ssd1306_UpdateScreen(lcd);
+}
+
 
 
 static ssize_t ssd1307fb_write(struct fb_info *info, const char __user *buf,
@@ -280,7 +284,7 @@ static ssize_t ssd1307fb_write(struct fb_info *info, const char __user *buf,
 	if (copy_from_user(dst, buf, count))
 		return -EFAULT;
 
-	ssd1307fb_update_display(lcd);
+	schedule_work(&lcd->display_update_ws);
 
 	*ppos += count;
 
@@ -307,21 +311,21 @@ static void ssd1307fb_fillrect(struct fb_info *info, const struct fb_fillrect *r
 {
     struct ssd1306_data *lcd = info->par;
 	sys_fillrect(info, rect);
-	ssd1307fb_update_display(lcd);
+	schedule_work(&lcd->display_update_ws);
 }
 
 static void ssd1307fb_copyarea(struct fb_info *info, const struct fb_copyarea *area)
 {
     struct ssd1306_data *lcd = info->par;
 	sys_copyarea(info, area);
-	ssd1307fb_update_display(lcd);
+	schedule_work(&lcd->display_update_ws);
 }
 
 static void ssd1307fb_imageblit(struct fb_info *info, const struct fb_image *image)
 {
     struct ssd1306_data *lcd = info->par;
 	sys_imageblit(info, image);
-	ssd1307fb_update_display(lcd);
+	schedule_work(&lcd->display_update_ws);
 }
 
 static struct fb_ops ssd1307fb_ops = {
@@ -422,7 +426,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 	i2c_set_clientdata(drv_client, info);
 
 	ssd1306_init_lcd(drv_client);
-	ssd1306_UpdateScreen(lcd);
+	INIT_WORK(&lcd->display_update_ws, update_display_work);
 
 
 	ret = register_framebuffer(info);
@@ -443,6 +447,9 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 static int ssd1306_remove(struct i2c_client *drv_client)
 {
 	struct fb_info *info = i2c_get_clientdata(drv_client);
+    struct ssd1306_data *lcd = info->par;
+
+	cancel_work_sync(&lcd->display_update_ws);
 
 	unregister_framebuffer(info);
 
