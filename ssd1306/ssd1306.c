@@ -44,6 +44,84 @@ static struct device *dev;
 
 
 
+struct ssd1306_data {
+    struct i2c_client *client;
+	struct class *sys_class;
+    int status;
+
+	int value;
+};
+static struct ssd1306_data *lcd;
+
+
+
+static ssize_t sys_lcd_clear(struct class *class,
+	struct class_attribute *attr, char *buf)
+{
+	//int ret;
+	ssize_t i = 0;
+
+	i += sprintf(buf, "sys_lcd_clear\n");
+	
+	dev_info(dev, "sys_lcd_clear\n");
+
+	return i;
+}
+
+
+static ssize_t sys_lcd_paint(struct class *class,
+	struct class_attribute *attr, char *buf)
+{
+	ssize_t i = 0;
+	//_Point center = {64, 32};
+
+	i += sprintf(buf, "sys_lcd_paint\n");
+
+	dev_info(dev, "sys_lcd_paint\n");
+
+	return i;
+}
+
+
+
+CLASS_ATTR(clear, 0664, &sys_lcd_clear, NULL);
+CLASS_ATTR(paint, 0664, &sys_lcd_paint, NULL);
+
+
+static void make_sysfs_entry(struct i2c_client *drv_client)
+{
+	struct device_node *np = drv_client->dev.of_node;
+	const char *name;
+	int res;
+
+	struct class *sys_class;
+
+	if (np) {
+
+		/*
+		if (!of_property_read_string(np, "label", &name))
+			dev_info(dev, "label = %s\n", name);
+		*/
+
+		sys_class = class_create(THIS_MODULE, DEVICE_NAME);
+
+		if (IS_ERR(sys_class)){
+			dev_err(dev, "bad class create\n");
+		}
+		else{
+			res = class_create_file(sys_class, &class_attr_clear);
+			res = class_create_file(sys_class, &class_attr_paint);
+
+
+			lcd->sys_class = sys_class;
+		}
+	}
+
+}
+
+
+
+
 static int ssd1306_probe(struct i2c_client *drv_client,
 			const struct i2c_device_id *id)
 {
@@ -53,6 +131,17 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 
 	dev_info(dev, "init I2C driver\n");
 
+
+    lcd = devm_kzalloc(&drv_client->dev, sizeof(struct ssd1306_data),
+                        GFP_KERNEL);
+    if (!lcd)
+        return -ENOMEM;
+
+    lcd->client = drv_client;
+    lcd->status = 0xABCD;
+    lcd->value 	= 10;
+
+    i2c_set_clientdata(drv_client, lcd);
 
     adapter = drv_client->adapter;
 
@@ -70,6 +159,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
     }
 
 
+	make_sysfs_entry(drv_client);
 
     dev_info(dev, "ssd1306 driver successfully loaded\n");
 
@@ -81,6 +171,12 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 static int ssd1306_remove(struct i2c_client *client)
 {
 	struct class *sys_class;
+
+	sys_class = lcd->sys_class;
+
+	class_remove_file(sys_class, &class_attr_clear);
+	class_remove_file(sys_class, &class_attr_paint);
+	class_destroy(sys_class);
 
 	dev_info(dev, "Goodbye, world!\n");
 	return 0;
