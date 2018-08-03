@@ -45,6 +45,38 @@
 #define WRITEDATA		0x40 // 
 
 
+
+#define SSD1306_SEND_COMMAND(c, d) i2c_smbus_write_byte_data((c), 0x00, (d))
+
+#define SET_LOW_COLUMN			0x00
+#define SET_HIGH_COLUMN			0x10
+#define COLUMN_ADDR				0x21
+#define PAGE_ADDR				0x22
+#define SET_START_PAGE			0xB0
+#define CHARGE_PUMP				0x8D
+#define DISPLAY_OFF				0xAE
+#define DISPLAY_ON				0xAF
+
+#define MEMORY_MODE				0x20
+#define SET_CONTRAST			0x81
+#define SET_NORMAL_DISPLAY		0xA6
+#define SET_INVERT_DISPLAY		0xA7
+#define COM_SCAN_INC			0xC0
+#define COM_SCAN_DEC			0xC8
+#define SET_DISPLAY_OFFSET		0xD3
+#define SET_DISPLAY_CLOCK_DIV	0xD5
+#define SET_PRECHARGE			0xD9
+#define SET_COM_PINS			0xDA
+#define SET_VCOM_DETECT			0xDB
+
+/* Memory modes */
+enum {
+	SSD1306_MEM_MODE_HORIZONAL = 0,
+	SSD1306_MEM_MODE_VERTICAL,
+	SSD1306_MEM_MODE_PAGE,
+	SSD1306_MEM_MODE_INVALID
+};
+
 static struct device *dev;
 
 
@@ -76,8 +108,17 @@ static struct fb_var_screeninfo ssd1307fb_var = {
 };
 
 
+typedef struct ssd1306_data_array
+{
+	u8      type;
+    u8      data[LCD_WIDTH * LCD_HEIGHT / 8];
+
+} ssd1306_data_array;
+
+ssd1306_data_array dataArray;
+
 /* SSD1306 data buffer */
-static u8 ssd1306_Buffer[LCD_WIDTH * LCD_HEIGHT / 8];
+u8 *ssd1306_Buffer = &dataArray.data[0];
 static u8 *lcd_vmem;
 
 
@@ -89,70 +130,73 @@ int ssd1306_OFF(struct ssd1306_data *drv_data);
 static void ssd1306_init_lcd(struct i2c_client *drv_client) {
 
     char m;
-    char i;
+    int i;
 
     dev_info(dev, "ssd1306: Device init \n");
-    	/* Init LCD */    
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xAE); //display off
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //Set Memory Addressing Mode
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //00,Horizontal Addressing Mode;01,Vertical Addressing Mode;10,Page Addressing Mode (RESET);11,Invalid
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0); //Set Page Start Address for Page Addressing Mode,0-7
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xC8); //Set COM Output Scan Direction
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //---set low column address
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x10); //---set high column address
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x40); //--set start line address
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x81); //--set contrast control register
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x0A);
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA1); //--set segment re-map 0 to 127
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA6); //--set normal display
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA8); //--set multiplex ratio(1 to 64)
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x3F); //
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xA4); //0xa4,Output follows RAM content;0xa5,Output ignores RAM content
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD3); //-set display offset
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x00); //-not offset
+    /* Init LCD */    
+	SSD1306_SEND_COMMAND(drv_client, DISPLAY_OFF);
 
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD5); //--set display clock divide ratio/oscillator frequency
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xa0); //--set divide ratio
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xD9); //--set pre-charge period
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x22); //
+	SSD1306_SEND_COMMAND(drv_client, MEMORY_MODE);
+	SSD1306_SEND_COMMAND(drv_client, SSD1306_MEM_MODE_HORIZONAL);
+	/* Set column start / end */
+	SSD1306_SEND_COMMAND(drv_client, COLUMN_ADDR);
+	SSD1306_SEND_COMMAND(drv_client, 0);
+	SSD1306_SEND_COMMAND(drv_client, (LCD_WIDTH - 1));
 
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xDA); //--set com pins hardware configuration
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x12);
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xDB); //--set vcomh
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x20); //0x20,0.77xVcc
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x8D); //--set DC-DC enable
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0x14); //
-    i2c_smbus_write_byte_data(drv_client, 0x00, 0xAF); //--turn on SSD1306 panel
+	/* Set page start / end */
+	SSD1306_SEND_COMMAND(drv_client, PAGE_ADDR);
+	SSD1306_SEND_COMMAND(drv_client, 0);
+	SSD1306_SEND_COMMAND(drv_client, (LCD_HEIGHT / 8 - 1));
+
+	SSD1306_SEND_COMMAND(drv_client, COM_SCAN_DEC);
+
+	SSD1306_SEND_COMMAND(drv_client, SET_CONTRAST);
+	SSD1306_SEND_COMMAND(drv_client, 0xFF); /* Max contrast */
+
+	SSD1306_SEND_COMMAND(drv_client, 0xA1); /* set segment re-map 0 to 127 */
+	SSD1306_SEND_COMMAND(drv_client, SET_NORMAL_DISPLAY);
+	SSD1306_SEND_COMMAND(drv_client, 0xA8); /* set multiplex ratio(1 to 64) */
+	SSD1306_SEND_COMMAND(drv_client, (LCD_HEIGHT - 1));
+	SSD1306_SEND_COMMAND(drv_client, 0xA4); /* 0xA4 => follows RAM content */
+	SSD1306_SEND_COMMAND(drv_client, SET_DISPLAY_OFFSET);
+	SSD1306_SEND_COMMAND(drv_client, 0x00); /* no offset */
+
+	SSD1306_SEND_COMMAND(drv_client, SET_DISPLAY_CLOCK_DIV);
+	SSD1306_SEND_COMMAND(drv_client, 0x80); /* set divide ratio */
+
+	SSD1306_SEND_COMMAND(drv_client, SET_PRECHARGE);
+	SSD1306_SEND_COMMAND(drv_client, 0x22);
+
+	SSD1306_SEND_COMMAND(drv_client, SET_COM_PINS);
+	SSD1306_SEND_COMMAND(drv_client, 0x12);
+
+	SSD1306_SEND_COMMAND(drv_client, SET_VCOM_DETECT);
+	SSD1306_SEND_COMMAND(drv_client, 0x20); /* 0x20, 0.77x Vcc */
     
-    for (m = 0; m < 8; m++) {
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
-        // Write multi data 
-        
-        for (i = 0; i < LCD_WIDTH; i++) {
-            i2c_smbus_write_byte_data(drv_client, 0x40, 0xaa);
-        }        
-    }   
+
+	SSD1306_SEND_COMMAND(drv_client, 0x8D);
+	SSD1306_SEND_COMMAND(drv_client, 0x14);
+	SSD1306_SEND_COMMAND(drv_client, 0xAF);
 }
+
+
 
 int ssd1306_UpdateScreen(struct ssd1306_data *drv_data) {
 
     struct i2c_client *drv_client;
     char m;
     char i;
+	int ret;
 
     drv_client = drv_data->client;
-
-    for (m = 0; m < 8; m++) {
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0xB0 + m);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x00);
-        i2c_smbus_write_byte_data(drv_client, 0x00, 0x10);
-        /* Write multi data */
-		for (i = 0; i < drv_data->width; i++) {
-			i2c_smbus_write_byte_data(drv_client, 0x40, ssd1306_Buffer[drv_data->width*m +i]);
-        }   
-    }
+    
+    dataArray.type = 0x40;
+	ret = i2c_master_send(drv_client, (u8 *) &dataArray, sizeof(ssd1306_data_array));
+	if (unlikely(ret < 0))
+	{
+		printk(KERN_ERR "i2c_master_send() has returned ERROR %d\n", ret);
+		return ret;
+	}    
 
     return 0;
 }
@@ -343,10 +387,7 @@ static int ssd1306_probe(struct i2c_client *drv_client,
 
 	
     lcd_vmem = devm_kzalloc(&drv_client->dev, vmem_size, GFP_KERNEL);
-
-/*	lcd_vmem = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO,
-					get_order(vmem_size));
-*/	
+	
     if (!lcd_vmem) {
 		dev_err(dev, "Couldn't allocate graphical memory.\n");
 		return -ENOMEM;        
